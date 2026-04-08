@@ -3,3 +3,4 @@ project(NoVmp)
 
 add_subdirectory(VTIL-Core)
 add_subdirectory(NoVmp)
+add_subdirectory(NoVmpDemo)
