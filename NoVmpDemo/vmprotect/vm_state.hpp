@@ -154,14 +154,18 @@ namespace vmp
 
 		// Skips to next instruction
 		//
-		void next()
+		vtil::vip_t next()
 		{
+			vtil::vip_t handler_vip = vip;
+
 			uint8_t handler_index = *read_vip(1);
 			uint64_t *handler_table = img->rva_to_ptr<uint64_t>(handler_table_rva);
 			uint64_t handler = handler_table[handler_index];
 			current_handler_rva = handler - img->get_real_image_base();
 
 			vtil::logger::log<CON_GRN>("\nHANDLER (%#x) := %p\n", handler_index, current_handler_rva);
+
+			return handler_vip;
 		}
 	};
 };

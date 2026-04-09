@@ -79,11 +79,12 @@ namespace vmp
 			if ( !block ) return nullptr;
 		}
 
+		instruction_stream is;
 		while ( 1 )
 		{
 			// Skip to next instruction and continue parsing the flow linearly
 			//
-			vstate->next();
+			vtil::vip_t handler_vip = vstate->next();
 
 			if ( !vstate->img->rva_to_section( vstate->current_handler_rva ) )
 			{
@@ -95,18 +96,18 @@ namespace vmp
 
 			// Unroll the stream
 			//
-			instruction_stream is = vstate->unroll();
+			is = vstate->unroll();
+			instruction_stream is_reduced = is;
 
-			vtil::vip_t handler_vip = vstate->vip;
-			std::vector parameters = extract_parameters( vstate, is );
-			reduce_chunk( vstate, is, parameters );
-			arch::instruction il_instruction = arch::classify( vstate, is );
+			std::vector parameters = extract_parameters( vstate, is_reduced );
+			reduce_chunk( vstate, is_reduced, parameters );
+			arch::instruction il_instruction = arch::classify( vstate, is_reduced );
 
 			// REMOVE
 			vtil::logger::log<CON_GRN>("[HANDLER]\n");
-			for ( int i = 0; i < is.size(); i++ )
+			for ( int i = 0; i < is_reduced.size(); i++ )
 			{
-				vtil::logger::log<CON_GRN>("%s\n", is[i].to_string());
+				vtil::logger::log<CON_GRN>("%s\n", is_reduced[i].to_string());
 			}
 			vtil::logger::log<CON_GRN>("HANDLER_OP = %s\n", il_instruction.op);
 			for ( int i = 0; i < il_instruction.parameters.size(); i++ )
@@ -124,6 +125,25 @@ namespace vmp
 			translate( block, il_instruction );
 			block->label_end();
 		}
+
+		// Parse VMEXIT to resolve the order registers are popped
+		//
+		std::vector exit_stack = parse_vmexit( vstate, is );
+
+		// Simulate the VPOP for each register being popped in the routine
+		//
+		for ( auto& op : exit_stack )
+			block->pop( op );
+
+		// Pop target from stack.
+		//
+		vtil::operand jmp_dest = block->tmp( 64 );
+		block->pop( jmp_dest );
+
+		// Insert vexit to the location.
+		//
+		block->vexit( jmp_dest );
+		jmp_dest = block->back().operands[ 0 ];
 
 		return block;
 	}
