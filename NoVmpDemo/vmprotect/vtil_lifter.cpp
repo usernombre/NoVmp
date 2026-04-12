@@ -80,9 +80,10 @@ namespace vmp
 		}
 
 		instruction_stream is;
+		arch::instruction il_instruction;
 		while ( 1 )
 		{
-			// Skip to next instruction and continue parsing the flow linearly
+			// Skip to next handler and continue parsing the flow linearly
 			//
 			vtil::vip_t handler_vip = vstate->next();
 
@@ -99,9 +100,11 @@ namespace vmp
 			is = vstate->unroll();
 			instruction_stream is_reduced = is;
 
+			// Classify the handler into an instruction
+			//
 			std::vector parameters = extract_parameters( vstate, is_reduced );
 			reduce_chunk( vstate, is_reduced, parameters );
-			arch::instruction il_instruction = arch::classify( vstate, is_reduced );
+			il_instruction = arch::classify( vstate, is_reduced );
 
 			// REMOVE
 			vtil::logger::log<CON_GRN>("[HANDLER]\n");
@@ -115,9 +118,9 @@ namespace vmp
 				vtil::logger::log<CON_GRN>("HANDLER_PARAM[%d] = %p\n", i, il_instruction.parameters[i]);
 			}
 
-			// Break out of the loop to handle VM exit
+			// Break out of the loop to handle special VM instructions
 			//
-			if ( il_instruction.op == "VMEXIT" ) break;
+			if ( il_instruction.op == "VJMP" || il_instruction.op == "VMEXIT" ) break;
 
 			// Translate from VMP Arch to VTIL and continue processing
 			//
@@ -126,24 +129,112 @@ namespace vmp
 			block->label_end();
 		}
 
-		// Parse VMEXIT to resolve the order registers are popped
-		//
-		std::vector exit_stack = parse_vmexit( vstate, is );
+		if ( il_instruction.op == "VJMP" )
+		{
+			// Pop target from stack.
+			//
+			auto jmp_dest = block->tmp( 64 );
+			block->pop( jmp_dest );
 
-		// Simulate the VPOP for each register being popped in the routine
-		//
-		for ( auto& op : exit_stack )
-			block->pop( op );
+			if ( vstate->dir_vip < 0 )
+				block->sub( jmp_dest, 1 );
 
-		// Pop target from stack.
-		//
-		vtil::operand jmp_dest = block->tmp( 64 );
-		block->pop( jmp_dest );
+			// If relocs stripped, substract image base, uses absolute address.
+			//
+			if( !vstate->img->has_relocs )
+				block->sub( jmp_dest, vstate->img->get_real_image_base() );
 
-		// Insert vexit to the location.
-		//
-		block->vexit( jmp_dest );
-		jmp_dest = block->back().operands[ 0 ];
+			// Insert jump to the location.
+			//
+			block->jmp( jmp_dest );
+
+			// Pass the current block through optimization.
+			//
+			block->owner->local_opt_count += vtil::optimizer::apply_all( block ); // OPTIMIZER
+
+			// Allocate an array of resolved destinations.
+			//
+			vtil::tracer tracer = {};
+			std::vector<vtil::vip_t> destination_list;
+			uint64_t image_base = vstate->img->has_relocs ? 0 : vstate->img->get_real_image_base();
+			auto branch_info = vtil::optimizer::aux::analyze_branch( block, &tracer, { .pack = true } );
+#if DISCOVERY_VERBOSE_OUTPUT
+			log( "CC: %s\n", branch_info.cc );
+			log( "VJMP => %s\n", branch_info.destinations );
+#endif
+			for ( auto& branch : branch_info.destinations )
+			{
+				// If not constant:
+				//
+				if ( !branch->is_constant() )
+				{
+					// Recursively trace the expression and remove any matches of REG_IMGBASE.
+					//
+					branch = tracer.rtrace_pexp( *branch );
+					branch.transform( [image_base] ( vtil::symbolic::expression::delegate& ex )
+						{
+							if ( ex->is_variable() )
+							{
+								auto& var = ex->uid.get<vtil::symbolic::variable>();
+								if ( var.is_register() && var.reg() == vtil::REG_IMGBASE )
+									*+ex = { image_base, ex->size() };
+							}
+						} )
+						.simplify( true );
+				}
+
+				// If still not constant:
+				//
+				if ( !branch->is_constant() )
+				{
+					// TODO: Handle switch table patterns.
+					//
+					log( "VJMP =>\n" );
+					for ( auto [branch, idx] : vtil::zip( branch_info.destinations, vtil::iindices ) )
+					{
+						log( "-- %d) %s\n", idx, branch );
+						log( ">> %s\n", tracer.rtrace_exp( *branch ) );
+					}
+					log( "CC: %s\n", branch_info.cc );
+					//vtil::optimizer::aux::analyze_branch( block, &tracer, false );
+					throw std::runtime_error( "Whoooops hit switch case..." );
+				}
+
+				destination_list.push_back( *branch->get<vtil::vip_t>() );
+			}
+
+			for ( auto& dst : destination_list )
+			{
+#if DISCOVERY_VERBOSE_OUTPUT
+				log<CON_GRN>( "Exploring branch => %p\n", dst );
+#endif
+				vm_state vstate_dup = *vstate;
+				vstate_dup.vip = dst + ( vstate->dir_vip < 0 ? +1 : 0 );
+				//vstate_dup.next();
+				lift_il( block->fork( dst ), &vstate_dup );
+			}
+		}
+		else if ( il_instruction.op == "VMEXIT" )
+		{
+			// Parse VMEXIT to resolve the order registers are popped
+			//
+			std::vector exit_stack = parse_vmexit(vstate, is);
+
+			// Simulate the VPOP for each register being popped in the routine
+			//
+			for (auto &op : exit_stack)
+				block->pop(op);
+
+			// Pop target from stack.
+			//
+			vtil::operand jmp_dest = block->tmp(64);
+			block->pop(jmp_dest);
+
+			// Insert vexit to the location.
+			//
+			block->vexit(jmp_dest);
+			jmp_dest = block->back().operands[0];
+		}
 
 		return block;
 	}

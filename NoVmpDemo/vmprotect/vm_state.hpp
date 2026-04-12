@@ -107,6 +107,10 @@ namespace vmp
 		//
 		x86_reg reg_vsp = X86_REG_INVALID;
 
+		// Register that holds the virtual handler table
+		//
+		x86_reg reg_vht = X86_REG_INVALID;
+
 		// Direction of the virtual machine instruction stream
 		//
 		int8_t dir_vip = 0;
@@ -163,7 +167,8 @@ namespace vmp
 			uint64_t handler = handler_table[handler_index];
 			current_handler_rva = handler - img->get_real_image_base();
 
-			vtil::logger::log<CON_GRN>("\nHANDLER (%#x) := %p\n", handler_index, current_handler_rva);
+			vtil::logger::log<CON_GRN>("\nVIP = %p\n", vip);
+			vtil::logger::log<CON_GRN>("HANDLER = %p (%#x)\n", handler_index, current_handler_rva);
 
 			return handler_vip;
 		}

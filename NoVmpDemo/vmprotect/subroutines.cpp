@@ -121,17 +121,18 @@ namespace vmp
 		};
 
 		// REMOVE
-		//vtil::logger::log<CON_GRN>("\n[HANDLER-param]\n");
-		//for ( int i = 0; i < is.size(); i++ )
-		//{
-		//	vtil::logger::log<CON_GRN>("%s\n", is[i].to_string());
-		//}
+		// vtil::logger::log<CON_GRN>("\n[HANDLER-param]\n");
+		// for ( int i = 0; i < is.size(); i++ )
+		// {
+		// 	vtil::logger::log<CON_GRN>("%s\n", is[i].to_string());
+		// }
 
 		// Trace all changes to RSP and VSP
 		//
 		std::map<x86_reg, bool> traced = {};
 		traced[ X86_REG_RSP ] = true;
 		traced[ vstate->reg_vsp ] = true;
+		traced[ vstate->reg_vht ] = true; // HACK (?)
 
 		// If JA is present, always take the branch
 		//
@@ -342,6 +343,7 @@ namespace vmp
 
 		fassert( i_handler_table != -1 );
 
+		vstate->reg_vht = is[ i_handler_table ].operands[ 0 ].reg;
 		vstate->handler_table_rva = is[ i_handler_table ].address + is[ i_handler_table ].operands[ 1 ].mem.disp + 7;
 		vtil::logger::log<CON_GRN>("HANDLER_TABLE = %p\n", vstate->handler_table_rva);
 	}
@@ -397,13 +399,6 @@ namespace vmp
 		}
 		fassert( stack.size() == ( 16 + 2 ) );
 
-		// REMOVE
-		vtil::logger::log<CON_GRN>("[STACK]\n");
-		for (int i = 0; i < stack.size(); i++)
-		{
-			vtil::logger::log<CON_GRN>("[%d] %s\n", i, stack[i].to_string());
-		}
-
 		// Resolve the stack composition
 		//
 		uint32_t ep_vip_offset = stack.size() * 8;
@@ -434,9 +429,6 @@ namespace vmp
 			break;
 		}
 
-		// REMOVE
-		vtil::logger::log<CON_GRN>("VSP := %s\n", vtil::amd64::name(vstate->reg_vsp));
-
 		// Find the first stack access
 		//
 		int i_load_vip_id = is.next( X86_INS_MOV, { X86_OP_REG, X86_OP_MEM }, [ & ] ( const vtil::amd64::instruction& ins )
@@ -447,9 +439,6 @@ namespace vmp
 		} );
 		fassert( i_load_vip_id != -1 );
 		vstate->reg_vip = is[ i_load_vip_id ].operands[ 0 ].reg;
-
-		// REMOVE
-		vtil::logger::log<CON_GRN>("VIP := %s\n", vtil::amd64::name(vstate->reg_vip));
 
 		// Find the first ADD r, x or LEA r, [r+x]
 		//
@@ -484,13 +473,6 @@ namespace vmp
 		);
 		fassert( vip_dec_ss_dep.empty() );
 
-		// REMOVE
-		vtil::logger::log<CON_GRN>("[DECRYPTION]\n");
-		for (int i = 0; i < vip_dec_ss.size(); i++)
-		{
-			vtil::logger::log<CON_GRN>("%s\n", vip_dec_ss[i].to_string());
-		}
-
 		// Cleanup the stream again
 		//
 		is.erase( i_add_base_id );
@@ -506,9 +488,6 @@ namespace vmp
 		static constexpr uint64_t default_image_base = 0x100000000;
 		uint32_t rva_vip0 = emu.get( vstate->reg_vip ) + default_image_base - vstate->img->get_real_image_base();
 
-		// REMOVE
-		vtil::logger::log<CON_GRN>("VIP_RVA = %p\n", rva_vip0);
-
 		// Find handler table
 		//
 		update_handler_table( vstate, is );
@@ -517,7 +496,22 @@ namespace vmp
 		//
 		update_vip_direction( vstate, is );
 
+		// REMOVE
+		vtil::logger::log<CON_GRN>("[STACK]\n");
+		for (int i = 0; i < stack.size(); i++)
+		{
+			vtil::logger::log<CON_GRN>("[%d] %s\n", i, stack[i].to_string());
+		}
+		vtil::logger::log<CON_GRN>("VSP := %s\n", vtil::amd64::name(vstate->reg_vsp));
+		vtil::logger::log<CON_GRN>("VHT := %s\n", vtil::amd64::name(vstate->reg_vht));
+		vtil::logger::log<CON_GRN>("VIP := %s\n", vtil::amd64::name(vstate->reg_vip));
+		vtil::logger::log<CON_GRN>("VIP_RVA = %p\n", rva_vip0);
 		vtil::logger::log<CON_GRN>("DIR = %d\n", vstate->dir_vip);
+		vtil::logger::log<CON_GRN>("[DECRYPTION]\n");
+		for (int i = 0; i < vip_dec_ss.size(); i++)
+		{
+			vtil::logger::log<CON_GRN>("%s\n", vip_dec_ss[i].to_string());
+		}
 
 		return { stack, rva_vip0 };
 	}

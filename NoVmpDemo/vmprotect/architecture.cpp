@@ -1462,7 +1462,7 @@ namespace vmp::arch
 				{
 					auto& is = vins.stream; auto& ps = vins.parameter_sizes;
 
-					return is.size() == 2 &&
+					return is.size() == 3 &&
 
 						// [[ 000000014013B289: mov  rsp, rbp
 						is[ 0 ].id == X86_INS_MOV &&
@@ -1474,7 +1474,12 @@ namespace vmp::arch
 						// [[ 000000014013B2B4: pop  rbp
 						is[ 1 ].id == X86_INS_POP &&
 						is[ 1 ].operands[ 0 ].type == X86_OP_REG &&
-						is[ 1 ].operands[ 0 ].reg == vstate->reg_vsp;
+						is[ 1 ].operands[ 0 ].reg == vstate->reg_vsp &&
+
+						// [[ 000000014013B2C6: pop  r11
+						is[ 2 ].id == X86_INS_POP &&
+						is[ 2 ].operands[ 0 ].type == X86_OP_REG &&
+						is[ 2 ].operands[ 0 ].reg == vstate->reg_vht;
 
 				}
 			}
