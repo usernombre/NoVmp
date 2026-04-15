@@ -1322,6 +1322,7 @@ namespace vmp::arch
 			# VJMP()
 		*/
 		{
+			// FIXME: improve check
 			"VJMP",
 			{
 				{},
@@ -1454,6 +1455,7 @@ namespace vmp::arch
 			}
 		},
 		{
+			// FIXME: improve check
 			"VMEXIT",
 			{
 				{},
@@ -1472,14 +1474,13 @@ namespace vmp::arch
 						is[ 0 ].operands[ 1 ].reg == vstate->reg_vsp &&
 
 						// [[ 000000014013B2B4: pop  rbp
-						is[ 1 ].id == X86_INS_POP &&
+						( is[ 1 ].id == X86_INS_POP &&
 						is[ 1 ].operands[ 0 ].type == X86_OP_REG &&
-						is[ 1 ].operands[ 0 ].reg == vstate->reg_vsp &&
+						is[ 1 ].operands[ 0 ].reg == vstate->reg_vsp ||
 
-						// [[ 000000014013B2C6: pop  r11
 						is[ 2 ].id == X86_INS_POP &&
 						is[ 2 ].operands[ 0 ].type == X86_OP_REG &&
-						is[ 2 ].operands[ 0 ].reg == vstate->reg_vht;
+						is[ 2 ].operands[ 0 ].reg == vstate->reg_vsp );
 
 				}
 			}
