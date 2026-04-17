@@ -148,16 +148,19 @@ namespace vmp
 			//
 			block->jmp( jmp_dest );
 
-			// Pass the current block through optimization.
+			// Copy the current block and pass it through optimization.
 			//
-			block->owner->local_opt_count += vtil::optimizer::apply_all( block ); // OPTIMIZER
+			// FIXME: find a better way of cloning a block
+			auto routine_copy = block->owner->clone();
+			auto block_copy = routine_copy->get_block( block->entry_vip );;
+			vtil::optimizer::apply_all( block_copy );
 
 			// Allocate an array of resolved destinations.
 			//
 			vtil::tracer tracer = {};
 			std::vector<vtil::vip_t> destination_list;
 			uint64_t image_base = vstate->img->has_relocs ? 0 : vstate->img->get_real_image_base();
-			auto branch_info = vtil::optimizer::aux::analyze_branch( block, &tracer, { .pack = true } );
+			auto branch_info = vtil::optimizer::aux::analyze_branch( block_copy, &tracer, { .pack = true } );
 #if DISCOVERY_VERBOSE_OUTPUT
 			log( "CC: %s\n", branch_info.cc );
 			log( "VJMP => %s\n", branch_info.destinations );
